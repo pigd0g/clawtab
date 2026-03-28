@@ -1,6 +1,6 @@
 ---
 name: clawtab
-description: Use Clawtab to control a local Chrome tab over HTTP. Use when the request involves browser automation, opening or closing tabs, navigating pages, clicking or filling elements, waiting for UI state, taking screenshots, reading page text, running JavaScript in the page, or inspecting console or network activity. Assumes CLAWTAB_URL and CLAWTAB_TOKEN are already set in the environment.
+description: "Use Clawtab to control a local Chrome tab over HTTP. Use when the request involves browser automation, opening or closing tabs, navigating pages, clicking or filling elements, waiting for UI state, taking screenshots, reading page text, running JavaScript in the page, or inspecting console or network activity. Assumes CLAWTAB_URL and CLAWTAB_TOKEN are already set in the environment."
 ---
 
 # Clawtab
