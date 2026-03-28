@@ -1,0 +1,24 @@
+{
+  "name": "clawtab",
+  "version": "0.1.0",
+  "description": "Lightweight HTTP-to-CDP bridge for Chrome browser control",
+  "main": "src/index.js",
+  "bin": {
+    "clawtab": "src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "cdp",
+    "chrome",
+    "devtools",
+    "browser",
+    "automation"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "ws": "^8.18.0"
+  }
+}
