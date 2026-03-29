@@ -1,65 +1,136 @@
 # Clawtab
 
-Clawtab is a lightweight HTTP bridge to Chrome DevTools Protocol. It connects to a locally running Chrome instance, attaches to page targets, and exposes a small authenticated API for browser automation, tab management, page inspection, screenshots, console capture, network capture, and script evaluation.
+Clawtab is a lightweight HTTP bridge to the Chrome DevTools Protocol. It can start Chrome/Chromium for you, connect over CDP, and expose a small authenticated HTTP API for browser automation, tab management, screenshots, console capture, network capture, and script evaluation.
 
-## Capabilities
+## Features
 
-- Connect to Chrome over CDP using its remote debugging endpoint.
-- List, create, close, and target browser tabs.
-- Navigate tabs and wait for page readiness.
-- Inspect page accessibility structure and visible text.
-- Find elements by CSS selector, XPath, or text.
-- Perform browser actions such as click, fill, type, press, hover, scroll, drag, focus, clear, and select.
-- Execute JavaScript in the page context.
-- Capture screenshots, console logs, and network activity.
+- Starts Chrome/Chromium automatically for `npx clawtab` or `clawtab`
+- Reuses an existing browser if remote debugging is already available
+- Resolves auth tokens from environment or `~/.clawtab/config.json`
+- Generates and persists a token automatically on first run
+- Exposes an authenticated local HTTP API for browser automation
+- Supports tab listing, creation, navigation, actions, screenshots, evaluate, console, and network capture
 
-## Requirements
+## Install
 
-- Node.js
-- Chrome or Chromium started with remote debugging enabled
-- `CLAWTAB_TOKEN` set in the environment
+### Run with npx
 
-Example Chrome launch:
-
-```powershell
-chrome.exe --remote-debugging-port=9222
+```bash
+npx clawtab --port 3000 --debug-port 9222
 ```
 
-## Running The Server
+### Install globally
 
-Install dependencies and start the service:
+```bash
+npm install -g clawtab
+clawtab --port 3000 --debug-port 9222
+```
 
-```powershell
+### Run from source
+
+```bash
 npm install
-$env:CLAWTAB_TOKEN = "replace-me"
-node src/index.js --port 3000 --debug-port 9222
+npm start
 ```
 
-The server binds to `http://127.0.0.1:3000` by default. For clients and agent skills, it is convenient to also define:
+If you want the raw server entrypoint without browser launch logic:
+
+```bash
+npm run start:server -- --debug-port 9222
+```
+
+## Token configuration
+
+Clawtab resolves its bearer token in this order:
+
+1. `CLAWTAB_TOKEN` environment variable
+2. `~/.clawtab/config.json`
+3. Generate a new token, save it to `~/.clawtab/config.json`, and print it to the console
+
+### Environment variable example
+
+```bash
+export CLAWTAB_TOKEN="replace-me"
+clawtab
+```
+
+PowerShell:
 
 ```powershell
-The server binds to `http://127.0.0.1:3000` by default unless you set `CLAWTAB_HOST` or pass `--host` on the CLI. To bind to your LAN (all interfaces) set `CLAWTAB_HOST=0.0.0.0` or use `--host 0.0.0.0`.
-
-For clients and agent skills, it is convenient to define:
-
-$env:CLAWTAB_URL = "http://<your-host-or-ip>:3000"
+$env:CLAWTAB_TOKEN = "replace-me"
+clawtab
 ```
 
-Notes:
+### Config file example
 
-- The process exits if `CLAWTAB_TOKEN` is missing.
-- On startup, Clawtab queries `http://127.0.0.1:<debug-port>/json/version` and attaches to the discovered CDP WebSocket.
-- Every HTTP request requires `Authorization: Bearer <CLAWTAB_TOKEN>`.
+`~/.clawtab/config.json`
 
-## Request Model
+```json
+{
+  "token": "generated-token-here"
+}
+```
 
-- All endpoints are on the same base URL, usually `http://127.0.0.1:3000`.
-- `GET` and `DELETE` endpoints take query and path parameters only.
-- `POST` endpoints accept JSON bodies.
-- Errors are returned as JSON in the shape `{ "error": "code", "message": "text" }`.
-- If `tabId` is omitted, Clawtab uses the first tracked tab.
+Config path by platform:
 
-## Endpoint Summary
+- Linux: `/home/<user>/.clawtab/config.json`
+- macOS: `/Users/<user>/.clawtab/config.json`
+- Windows: `C:\Users\<user>\.clawtab\config.json`
+
+Clawtab uses Node.js `os.homedir()` to resolve the home directory, so the same code path works across Linux, macOS, and Windows.
+
+## Usage
+
+```bash
+clawtab [--port <port>] [--debug-port <port>] [--host <host>]
+```
+
+Options:
+
+- `--port <port>`: HTTP server port. Default `3000`
+- `--debug-port <port>`: Chrome DevTools remote debugging port. Default `9222`
+- `--host <host>`: HTTP bind host. Default `0.0.0.0`
+- `--help`: Show CLI help
+
+Examples:
+
+```bash
+# Start with automatic token loading/generation
+npx clawtab
+
+# Bind to all interfaces on a custom port
+clawtab --host 0.0.0.0 --port 3010
+
+# Use a specific token from the environment
+CLAWTAB_TOKEN=mysecret clawtab --debug-port 9333
+```
+
+## How startup works
+
+- The CLI resolves the auth token.
+- If Chrome/Chromium is already listening on the requested debug port, Clawtab reuses it.
+- Otherwise Clawtab launches Chrome/Chromium with remote debugging enabled.
+- Clawtab discovers the DevTools WebSocket via `http://127.0.0.1:<debug-port>/json/version`.
+- The HTTP API starts and requires `Authorization: Bearer <token>` on every request.
+
+## API base URL
+
+By default the server listens on:
+
+```text
+http://127.0.0.1:3000
+```
+
+If you bind another host or port, update your client accordingly.
+
+Common headers:
+
+```http
+Authorization: Bearer <CLAWTAB_TOKEN>
+Content-Type: application/json
+```
+
+## Endpoint summary
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -79,318 +150,53 @@ Notes:
 | `POST` | `/tabs` | Create a new tab |
 | `DELETE` | `/tabs/:id` | Close a tab |
 
-## Common Headers
+## Quick examples
 
-```http
-Authorization: Bearer <CLAWTAB_TOKEN>
-Content-Type: application/json
+Health check:
+
+```bash
+curl -H "Authorization: Bearer $CLAWTAB_TOKEN" \
+  http://127.0.0.1:3000/health
 ```
 
-## Examples
+Open a page in a new tab:
 
-The examples below use `$CLAWTAB_URL` as the API base URL and `$CLAWTAB_TOKEN` as the bearer token.
-
-### Health
-
-```http
-GET $CLAWTAB_URL/health
-Authorization: Bearer $CLAWTAB_TOKEN
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $CLAWTAB_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com"}' \
+  http://127.0.0.1:3000/tabs
 ```
 
-Example response:
+Navigate the current tab:
 
-```json
-{
-  "status": "ok",
-  "uptime": 5234,
-npx . --debug-port 9222 --port 3000 --host 0.0.0.0
-  "cdp": {
-    "connected": true,
-    "url": "ws://127.0.0.1:9222/devtools/browser/..."
-  },
-  "tabs": 3
-}
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $CLAWTAB_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com","waitFor":"load"}' \
+  http://127.0.0.1:3000/navigate
 ```
 
-### Tabs
+Capture text:
 
-List tabs:
-
-```http
-GET $CLAWTAB_URL/tabs
-Authorization: Bearer $CLAWTAB_TOKEN
+```bash
+curl -H "Authorization: Bearer $CLAWTAB_TOKEN" \
+  http://127.0.0.1:3000/text
 ```
 
-Create a tab:
+## Cross-platform notes
 
-```http
-POST $CLAWTAB_URL/tabs
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
+- Token persistence uses `os.homedir()`, so the config location is portable.
+- The CLI relies on the `chrome-launcher` package to find and start Chrome/Chromium on Linux, macOS, and Windows.
+- If Chrome is not installed in a standard location, install Chrome/Chromium first or use the raw server mode against an already running browser with remote debugging enabled.
 
-{
-  "url": "https://example.com"
-}
+## Development
+
+```bash
+git clone https://github.com/pigd0g/clawtab
+cd clawtab
+npm install
+npm start
 ```
-
-Close a tab:
-
-```http
-DELETE $CLAWTAB_URL/tabs/<tabId>
-Authorization: Bearer $CLAWTAB_TOKEN
-```
-
-### Navigate
-
-```http
-POST $CLAWTAB_URL/navigate
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "tabId": "optional-existing-tab-id",
-  "url": "https://example.com",
-  "waitFor": "load",
-  "timeout": 30000
-}
-```
-
-Fields:
-
-- `newTab: true` creates a new tab instead of reusing an existing one.
-- `waitFor` supports `load`, `domcontentloaded`, `networkidle`, and `none`.
-
-### Snapshot
-
-```http
-GET $CLAWTAB_URL/snapshot?tabId=<tabId>&filter=interactive
-Authorization: Bearer $CLAWTAB_TOKEN
-```
-
-Response nodes include:
-
-- `ref`: synthetic element reference such as `e12`
-- `role`: accessibility role
-- `name`: accessible name
-- `nodeId`: backend DOM node id for direct targeting
-
-### Find
-
-Find by CSS selector:
-
-```http
-POST $CLAWTAB_URL/find
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "tabId": "optional-tab-id",
-  "selector": "button[type='submit']",
-  "maxResults": 10
-}
-```
-
-Find by XPath:
-
-```http
-POST $CLAWTAB_URL/find
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "xpath": "//a[contains(., 'Pricing')]"
-}
-```
-
-Find by text:
-
-```http
-POST $CLAWTAB_URL/find
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "text": "Sign in"
-}
-```
-
-### Single Action
-
-Click by selector:
-
-```http
-POST $CLAWTAB_URL/action
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "kind": "click",
-  "selector": "button[type='submit']"
-}
-```
-
-Fill an input:
-
-```http
-POST $CLAWTAB_URL/action
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "kind": "fill",
-  "selector": "input[name='email']",
-  "text": "user@example.com"
-}
-```
-
-Press a key:
-
-```http
-POST $CLAWTAB_URL/action
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "kind": "press",
-  "key": "Enter"
-}
-```
-
-Supported `kind` values:
-
-- `click`
-- `dblclick`
-- `fill`
-- `type`
-- `press`
-- `scroll`
-- `hover`
-- `drag`
-- `focus`
-- `clear`
-- `select`
-
-Targeting options vary by action. Most actions can target by `selector`, `nodeId`, or direct coordinates.
-
-### Batch Actions
-
-```http
-POST $CLAWTAB_URL/actions
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "actions": [
-    {
-      "kind": "fill",
-      "selector": "input[name='q']",
-      "text": "clawtab"
-    },
-    {
-      "kind": "press",
-      "key": "Enter"
-    }
-  ],
-  "continueOnError": false
-}
-```
-
-### Wait
-
-Wait for a selector:
-
-```http
-POST $CLAWTAB_URL/wait
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "selector": "main"
-}
-```
-
-Wait for text:
-
-```http
-POST $CLAWTAB_URL/wait
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "text": "Welcome back",
-  "timeout": 10000
-}
-```
-
-If neither `selector` nor `text` is provided, Clawtab waits for `document.readyState === 'complete'`.
-
-### Evaluate
-
-```http
-POST $CLAWTAB_URL/evaluate
-Authorization: Bearer $CLAWTAB_TOKEN
-Content-Type: application/json
-
-{
-  "expression": "document.title",
-  "returnByValue": true,
-  "awaitPromise": false
-}
-```
-
-### Text
-
-```http
-GET $CLAWTAB_URL/text?tabId=<tabId>
-Authorization: Bearer $CLAWTAB_TOKEN
-```
-
-### Screenshot
-
-Get base64 JSON:
-
-```http
-GET $CLAWTAB_URL/screenshot?tabId=<tabId>&fullPage=true&format=png
-Authorization: Bearer $CLAWTAB_TOKEN
-```
-
-Get raw image bytes:
-
-```http
-GET $CLAWTAB_URL/screenshot?format=jpeg&quality=80
-Authorization: Bearer $CLAWTAB_TOKEN
-Accept: image/jpeg
-```
-
-### Console
-
-```http
-GET $CLAWTAB_URL/console?tabId=<tabId>&clear=false
-Authorization: Bearer $CLAWTAB_TOKEN
-```
-
-Entries contain `type`, `args`, and `timestamp`.
-
-### Network
-
-```http
-GET $CLAWTAB_URL/network?tabId=<tabId>&clear=false
-Authorization: Bearer $CLAWTAB_TOKEN
-```
-
-Entries contain `requestId`, `method`, `url`, `type`, `timestamp`, `status`, and sometimes `mimeType`.
-
-## Typical Flow
-
-1. Create or select a tab with `/tabs`.
-2. Navigate with `/navigate`.
-3. Wait for page readiness with `/wait`.
-4. Inspect the page with `/snapshot`, `/find`, or `/text`.
-5. Interact with `/action` or `/actions`.
-6. Debug with `/console`, `/network`, and `/evaluate`.
-
-## Security
-
-- Clawtab is intended for local use.
-- The bearer token is mandatory for every request.
-- The `/evaluate` endpoint can run arbitrary JavaScript in the target page context, so only expose the service to trusted callers.
